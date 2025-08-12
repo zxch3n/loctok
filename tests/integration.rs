@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use tokcount::{count_tokens_in_path, count_tokens_in_text, get_encoder, Options};
+use loctok::{count_tokens_in_path, count_tokens_in_text, get_encoder, Options};
 
 #[test]
 fn counts_tokens_and_respects_gitignore() {

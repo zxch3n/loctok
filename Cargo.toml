@@ -1,16 +1,16 @@
 [package]
-name = "tokcount"
+name = "loctok"
 version = "0.1.0"
 edition = "2021"
-description = "CLI to count LLM tokens in a folder, respecting .gitignore"
+description = "Count LOC (lines of code) & TOK (LLM tokens), fast."
 license = "MIT OR Apache-2.0"
 
 [lib]
-name = "tokcount"
+name = "loctok"
 path = "src/lib.rs"
 
 [[bin]]
-name = "tokcount"
+name = "loctok"
 path = "src/main.rs"
 
 [dependencies]

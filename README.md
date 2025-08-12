@@ -1,6 +1,6 @@
-# tokcount
+# loctok
 
-Count LLM tokens and lines of code in a folder (gitignore-aware). Handy for sizing context windows and budgeting tokens across a codebase.
+Count LOC (lines of code) & TOK (LLM tokens), fast.
 
 ## Features
 
@@ -27,31 +27,31 @@ cargo run --release -- .
 
 ```bash
 # Count tokens in current directory
-tokcount
+loctok
 
 # Count tokens in a given path
-tokcount path/to/dir
+loctok path/to/dir
 
 # JSON output
-tokcount --format json > counts.json
+loctok --format json > counts.json
 
 # File tree with per-node LOC and tokens
-tokcount --format tree
+loctok --format tree
 
 # Use a specific encoding
-tokcount --encoding cl100k_base
+loctok --encoding cl100k_base
 
 # Include only certain extensions (no dots)
-tokcount --ext rs,md,ts
+loctok --ext rs,md,ts
 
 # Include hidden files (dotfiles)
-tokcount --hidden
+loctok --hidden
 
 # Progress prints to stderr; to silence in scripts, redirect:
-tokcount --format json 2>/dev/null
+loctok --format json 2>/dev/null
 ```
 
-Run `tokcount --help` to see all options.
+Run `loctok --help` to see all options.
 
 ## Examples
 
@@ -60,7 +60,7 @@ The examples below were produced by running against `tests/fixtures` in this rep
 ### By-language table (default)
 
 ```
-> tokcount
+> loctok
 
 595.171834ms (655.27 files/s)
 ╭────────────┬───────────────┬─────────────╮
@@ -87,7 +87,7 @@ The examples below were produced by running against `tests/fixtures` in this rep
 ### Tree view
 
 ```
-> tokcount --format tree
+> loctok --format tree
 
 379.958459ms (21.05 files/s)
 
@@ -111,7 +111,7 @@ Name                           LOC       TOK
 ### JSON
 
 ```json
-> tokcount --format json
+> loctok --format json
 
 {
   "by_language": [

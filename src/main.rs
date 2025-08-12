@@ -7,7 +7,7 @@ use clap::{ArgAction, Parser, ValueEnum};
 use num_format::{Locale, ToFormattedString};
 use tabled::settings::{object::Columns, Alignment, Modify, Style};
 use tabled::{Table, Tabled};
-use tokcount::{
+use loctok::{
     aggregate_by_language, count_tokens_in_path, count_tokens_in_path_with_progress, Options,
 };
 
@@ -23,9 +23,9 @@ enum OutputFormat {
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "tokcount",
+    name = "loctok",
     version,
-    about = "Count LLM tokens in a folder (gitignore-aware)"
+    about = "Count LOC (lines of code) & TOK (LLM tokens), fast."
 )]
 struct Cli {
     /// Root path to scan (defaults to current directory)
@@ -244,7 +244,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn print_by_language_table(result: &tokcount::CountResult) {
+fn print_by_language_table(result: &loctok::CountResult) {
     #[derive(Tabled)]
     struct Row {
         #[tabled(rename = "Language")]
@@ -338,7 +338,7 @@ fn rel_to_root(path: &Path, root_abs: &Path, root_arg: &Path) -> PathBuf {
         .unwrap_or_else(|| path.to_path_buf())
 }
 
-fn build_tree(root: &Path, files: &[tokcount::FileCount]) -> TreeNode {
+fn build_tree(root: &Path, files: &[loctok::FileCount]) -> TreeNode {
     let root_abs = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     let root_name = root
         .file_name()
@@ -385,7 +385,7 @@ fn build_tree(root: &Path, files: &[tokcount::FileCount]) -> TreeNode {
     root_node
 }
 
-fn print_tree(root: &Path, files: &[tokcount::FileCount]) {
+fn print_tree(root: &Path, files: &[loctok::FileCount]) {
     let tree = build_tree(root, files);
 
     // Compute widths for formatted numbers for nicer alignment
