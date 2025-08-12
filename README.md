@@ -13,14 +13,25 @@ Count LOC (lines of code) & TOK (LLM tokens), fast.
 
 ## Install
 
-Requires Rust (1.70+ recommended).
+Option 1: via npm (prebuilt binary)
 
 ```bash
-# From the project root
-cargo install --path .
+npx loctok          # run directly
+# or
+npm i -g loctok     # install globally
+```
 
-# Or build and run directly
-cargo run --release -- .
+Option 2: build from source (Rust 1.70+ recommended)
+
+```bash
+# From crates.io (recommended)
+cargo install loctok
+
+# From Git (without publishing)
+cargo install --git https://github.com/yourname/loctok --bin loctok
+
+# From the project root (for local testing)
+cargo install --path .
 ```
 
 ## CLI Usage
