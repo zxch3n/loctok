@@ -6,6 +6,16 @@ description = "Count LOC (lines of code) & TOK (LLM tokens), fast."
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 exclude = ["npm/"]
+repository = "https://github.com/zxch3n/loctoc"
+authors = ["Zixuan Chen"]
+keywords = ["loc", "lines-of-code", "tokens", "tiktoken", "llm"]
+categories = [
+    "command-line-utilities",
+    "development-tools",
+    "text-processing",
+    "encoding",
+    "filesystem",
+]
 
 [lib]
 name = "loctok"
