@@ -28,3 +28,11 @@ num-format = "0.4"
 assert_cmd = "2"
 predicates = "3"
 tempfile = "3"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+opt-level = "z"
+panic = "abort"
+strip = "symbols"
+debug = 0
