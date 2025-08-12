@@ -272,7 +272,6 @@ fn print_tree(root: &Path, files: &[tokcount::FileCount]) {
         files.sort_by(|a, b| a.name.cmp(&b.name));
         let ordered = dirs.into_iter().chain(files.into_iter()).collect::<Vec<_>>();
 
-        let len = ordered.len();
         for (idx, child) in ordered.into_iter().enumerate() {
             let is_first = idx == 0;
             let branch = if is_first { "┌── " } else { "├── " };
@@ -299,6 +298,7 @@ fn print_tree(root: &Path, files: &[tokcount::FileCount]) {
     let header_tok_plain = "TOK";
     let header_loc = color_bold(header_loc_plain);
     let header_tok = color_bold(header_tok_plain);
+    let gap = "    "; // spacing between columns
     let pad_label = if max_label > 4 { max_label - 4 } else { 0 }; // 4 == len("Name")
     let pad_loc = if max_loc > header_loc_plain.len() {
         max_loc - header_loc_plain.len()
@@ -311,15 +311,17 @@ fn print_tree(root: &Path, files: &[tokcount::FileCount]) {
         0
     };
     println!(
-        "{}{}  {}{}  {}{}",
+        "{}{}{}{}{}{}{}{}",
         header_name,
         " ".repeat(pad_label),
+        gap,
         " ".repeat(pad_loc),
         header_loc,
+        gap,
         " ".repeat(pad_tok),
         header_tok
     );
-    let total_width = max_label + 2 + max_loc + 2 + max_tok;
+    let total_width = max_label + gap.len() + max_loc + gap.len() + max_tok;
     println!("{}", "-".repeat(total_width));
 
     // Helper to print one line (with colors, dir slash, and vertical alignment)
@@ -329,6 +331,7 @@ fn print_tree(root: &Path, files: &[tokcount::FileCount]) {
         is_dir: bool,
         lines: usize,
         tokens: usize,
+        gap: &str,
         max_label: usize,
         max_loc: usize,
         max_tok: usize,
@@ -362,12 +365,14 @@ fn print_tree(root: &Path, files: &[tokcount::FileCount]) {
             0
         };
         println!(
-            "{}{}{}  {}{}  {}{}",
+            "{}{}{}{}{}{}{}{}{}",
             prefix,
             colored_name,
             " ".repeat(pad_label),
+            gap,
             " ".repeat(pad_loc),
             loc_s,
+            gap,
             " ".repeat(pad_tok),
             tok_s
         );
@@ -378,6 +383,7 @@ fn print_tree(root: &Path, files: &[tokcount::FileCount]) {
         node: &TreeNode,
         line_prefix: String,
         child_prefix: String,
+        gap: &str,
         max_label: usize,
         max_loc: usize,
         max_tok: usize,
@@ -411,6 +417,7 @@ fn print_tree(root: &Path, files: &[tokcount::FileCount]) {
                 child,
                 child_line_prefix,
                 next_prefix,
+                gap,
                 max_label,
                 max_loc,
                 max_tok,
@@ -424,6 +431,7 @@ fn print_tree(root: &Path, files: &[tokcount::FileCount]) {
             matches!(node.kind, NodeKind::Dir),
             node.lines,
             node.tokens,
+            gap,
             max_label,
             max_loc,
             max_tok,
@@ -431,5 +439,5 @@ fn print_tree(root: &Path, files: &[tokcount::FileCount]) {
     }
 
     // Kick off from root with empty prefixes so root appears last
-    print_node_post(&tree, String::new(), String::new(), max_label, max_loc, max_tok);
+    print_node_post(&tree, String::new(), String::new(), gap, max_label, max_loc, max_tok);
 }
