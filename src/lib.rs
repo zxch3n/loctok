@@ -9,7 +9,6 @@ use tiktoken_rs::CoreBPE;
 pub struct Options {
     pub encoding: String,
     pub include_hidden: bool,
-    pub max_file_size: Option<u64>,
 }
 
 impl Default for Options {
@@ -17,7 +16,6 @@ impl Default for Options {
         Self {
             encoding: "cl100k_base".to_string(),
             include_hidden: false,
-            max_file_size: None,
         }
     }
 }
@@ -76,7 +74,7 @@ pub fn language_from_path(path: &Path) -> String {
         "rb" => "Ruby",
         "php" => "PHP",
         "swift" => "Swift",
-        "m" | "mm" => "Objective-C",
+        "mm" => "Objective-C",
         "scala" => "Scala",
         "rs.in" => "Rust",
         "md" | "markdown" => "Markdown",
@@ -86,7 +84,7 @@ pub fn language_from_path(path: &Path) -> String {
         "html" | "htm" => "HTML",
         "css" => "CSS",
         "svg" => "SVG",
-        "sh" | "bash" | "zsh" => "Bourne Shell",
+        "sh" | "bash" | "zsh" => "Shell",
         "bat" | "cmd" => "Batch",
         "ps1" => "PowerShell",
         "txt" => "Text",
@@ -108,7 +106,6 @@ pub fn language_from_path(path: &Path) -> String {
         "pas" | "pp" => "Pascal",
         "d" => "D",
         "zig" => "Zig",
-        "v" => "V",
         "vb" => "Visual Basic",
         "sql" => "SQL",
         "dockerfile" => "Dockerfile",
@@ -122,7 +119,6 @@ pub fn language_from_path(path: &Path) -> String {
         "sol" => "Solidity",
         "tf" => "Terraform",
         "nix" => "Nix",
-        "sh" => "Shell",
         "asm" | "s" => "Assembly",
         "cobol" | "cob" => "COBOL",
         "fortran" | "f90" | "f95" => "Fortran",
@@ -175,17 +171,16 @@ pub fn language_from_path(path: &Path) -> String {
         "purescript" | "purs" => "PureScript",
         "reasonml" | "re" | "rei" => "ReasonML",
         "rescript" | "res" | "resi" => "ReScript",
-        "fsharp" | "fs" => "F#",
         "chapel" | "chpl" => "Chapel",
         "pony" => "Pony",
         "red" | "reds" => "Red",
-        "rebol" | "r" => "REBOL",
+        "rebol" => "REBOL",
         "factor" => "Factor",
         "forth" | "4th" => "Forth",
         "smalltalk" | "st" => "Smalltalk",
         "self" => "Self",
         "io" => "Io",
-        "groovy" | "gradle" => "Groovy",
+        "groovy" => "Groovy",
         "gradle.kts" => "Kotlin",
         _ => "Other",
     }
@@ -255,15 +250,6 @@ pub fn count_tokens_in_path<P: AsRef<Path>>(root: P, opts: &Options) -> Result<C
         };
         let _ = ft; // silence unused in some toolchains
 
-        // Size filter
-        if let Some(limit) = opts.max_file_size {
-            if let Ok(md) = dent.metadata() {
-                if md.len() > limit {
-                    continue;
-                }
-            }
-        }
-
         let path = dent.path();
         let bytes = match fs::read(path) {
             Ok(b) => b,
@@ -272,7 +258,7 @@ pub fn count_tokens_in_path<P: AsRef<Path>>(root: P, opts: &Options) -> Result<C
                 continue;
             }
         };
-        let Ok(text) = String::from_utf8(&bytes) else {
+        let Ok(text) = String::from_utf8(bytes) else {
             continue;
         };
         let tokens = count_tokens_in_text(&encoder, &text);
