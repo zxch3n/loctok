@@ -26,6 +26,7 @@ impl Default for Options {
 pub struct FileCount {
     pub path: PathBuf,
     pub tokens: usize,
+    pub lines: usize,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -49,6 +50,177 @@ pub fn count_tokens_in_text(encoder: &CoreBPE, text: &str) -> usize {
     encoder.encode_ordinary(text).len()
 }
 
+pub fn count_non_empty_lines(text: &str) -> usize {
+    text.lines().filter(|l| !l.trim().is_empty()).count()
+}
+
+pub fn language_from_path(path: &Path) -> String {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "rs" => "Rust",
+        "ts" | "tsx" => "TypeScript",
+        "js" | "jsx" => "JavaScript",
+        "svelte" => "Svelte",
+        "py" => "Python",
+        "go" => "Go",
+        "java" => "Java",
+        "kt" | "kts" => "Kotlin",
+        "c" => "C",
+        "h" => "C",
+        "cc" | "cpp" | "cxx" | "hpp" | "hh" | "hxx" => "C++",
+        "cs" => "C#",
+        "rb" => "Ruby",
+        "php" => "PHP",
+        "swift" => "Swift",
+        "m" | "mm" => "Objective-C",
+        "scala" => "Scala",
+        "rs.in" => "Rust",
+        "md" | "markdown" => "Markdown",
+        "toml" => "TOML",
+        "yaml" | "yml" => "YAML",
+        "json" => "JSON",
+        "html" | "htm" => "HTML",
+        "css" => "CSS",
+        "svg" => "SVG",
+        "sh" | "bash" | "zsh" => "Bourne Shell",
+        "bat" | "cmd" => "Batch",
+        "ps1" => "PowerShell",
+        "txt" => "Text",
+        "mbt" | "mbti" => "Moonbit",
+        "dart" => "Dart",
+        "ex" | "exs" => "Elixir",
+        "erl" | "hrl" => "Erlang",
+        "fs" | "fsi" | "fsx" => "F#",
+        "clj" | "cljs" | "cljc" => "Clojure",
+        "hs" | "lhs" => "Haskell",
+        "lua" => "Lua",
+        "pl" | "pm" => "Perl",
+        "r" | "R" => "R",
+        "jl" => "Julia",
+        "nim" => "Nim",
+        "cr" => "Crystal",
+        "elm" => "Elm",
+        "ml" | "mli" => "OCaml",
+        "pas" | "pp" => "Pascal",
+        "d" => "D",
+        "zig" => "Zig",
+        "v" => "V",
+        "vb" => "Visual Basic",
+        "sql" => "SQL",
+        "dockerfile" => "Dockerfile",
+        "makefile" | "mk" => "Makefile",
+        "cmake" => "CMake",
+        "gradle" => "Gradle",
+        "xml" => "XML",
+        "proto" => "Protocol Buffers",
+        "graphql" | "gql" => "GraphQL",
+        "vue" => "Vue",
+        "sol" => "Solidity",
+        "tf" => "Terraform",
+        "nix" => "Nix",
+        "sh" => "Shell",
+        "asm" | "s" => "Assembly",
+        "cobol" | "cob" => "COBOL",
+        "fortran" | "f90" | "f95" => "Fortran",
+        "ada" | "adb" | "ads" => "Ada",
+        "lisp" | "lsp" => "Lisp",
+        "scheme" | "scm" => "Scheme",
+        "prolog" | "pro" => "Prolog",
+        "matlab" | "m" => "MATLAB",
+        "octave" => "Octave",
+        "mathematica" | "nb" => "Mathematica",
+        "sage" => "SageMath",
+        "sas" => "SAS",
+        "spss" => "SPSS",
+        "stata" | "do" => "Stata",
+        "verilog" | "v" => "Verilog",
+        "vhdl" | "vhd" => "VHDL",
+        "tcl" => "Tcl",
+        "expect" => "Expect",
+        "awk" => "AWK",
+        "sed" => "Sed",
+        "grep" => "Grep",
+        "powershell" | "psm1" => "PowerShell",
+        "vim" => "Vim Script",
+        "emacs" | "el" => "Emacs Lisp",
+        "latex" | "tex" => "LaTeX",
+        "bibtex" | "bib" => "BibTeX",
+        "rmd" | "rnw" => "R Markdown",
+        "ipynb" => "Jupyter Notebook",
+        "org" => "Org Mode",
+        "rst" => "reStructuredText",
+        "asciidoc" | "adoc" => "AsciiDoc",
+        "wiki" => "Wiki Markup",
+        "dot" => "Graphviz DOT",
+        "plantuml" | "puml" => "PlantUML",
+        "mermaid" => "Mermaid",
+        "webassembly" | "wat" | "wasm" => "WebAssembly",
+        "glsl" | "vert" | "frag" => "GLSL",
+        "hlsl" => "HLSL",
+        "cg" => "Cg",
+        "maxscript" | "ms" => "MAXScript",
+        "mel" => "MEL",
+        "gdscript" | "gd" => "GDScript",
+        "actionscript" | "as" => "ActionScript",
+        "applescript" | "scpt" => "AppleScript",
+        "vbs" | "vbscript" => "VBScript",
+        "jscript" => "JScript",
+        "coffeescript" | "coffee" => "CoffeeScript",
+        "livescript" | "ls" => "LiveScript",
+        "typescript" | "d.ts" => "TypeScript",
+        "purescript" | "purs" => "PureScript",
+        "reasonml" | "re" | "rei" => "ReasonML",
+        "rescript" | "res" | "resi" => "ReScript",
+        "fsharp" | "fs" => "F#",
+        "chapel" | "chpl" => "Chapel",
+        "pony" => "Pony",
+        "red" | "reds" => "Red",
+        "rebol" | "r" => "REBOL",
+        "factor" => "Factor",
+        "forth" | "4th" => "Forth",
+        "smalltalk" | "st" => "Smalltalk",
+        "self" => "Self",
+        "io" => "Io",
+        "groovy" | "gradle" => "Groovy",
+        "gradle.kts" => "Kotlin",
+        _ => "Other",
+    }
+    .to_string()
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct LangSummary {
+    pub language: String,
+    pub lines: usize,
+    pub tokens: usize,
+}
+
+pub fn aggregate_by_language(files: &[FileCount]) -> Vec<LangSummary> {
+    use std::collections::BTreeMap;
+    let mut map: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+    for f in files {
+        let lang = language_from_path(&f.path);
+        let entry = map.entry(lang).or_insert((0, 0));
+        entry.0 += f.lines;
+        entry.1 += f.tokens;
+    }
+    let mut v: Vec<LangSummary> = map
+        .into_iter()
+        .map(|(language, (lines, tokens))| LangSummary {
+            language,
+            lines,
+            tokens,
+        })
+        .collect();
+    // Sort by token count desc
+    v.sort_by(|a, b| b.tokens.cmp(&a.tokens));
+    v
+}
+
 pub fn count_tokens_in_path<P: AsRef<Path>>(root: P, opts: &Options) -> Result<CountResult> {
     let encoder = get_encoder(&opts.encoding)?;
 
@@ -63,7 +235,7 @@ pub fn count_tokens_in_path<P: AsRef<Path>>(root: P, opts: &Options) -> Result<C
     builder.git_ignore(true); // respect .gitignore
     builder.git_global(true); // respect global gitignore
     builder.git_exclude(true); // respect .git/info/exclude
-    // In environments without a .git directory, also treat .gitignore as a custom ignore file
+                               // In environments without a .git directory, also treat .gitignore as a custom ignore file
     builder.add_custom_ignore_filename(".gitignore");
 
     let walker = builder.build();
@@ -100,12 +272,16 @@ pub fn count_tokens_in_path<P: AsRef<Path>>(root: P, opts: &Options) -> Result<C
                 continue;
             }
         };
-        let text = String::from_utf8_lossy(&bytes);
+        let Ok(text) = String::from_utf8(&bytes) else {
+            continue;
+        };
         let tokens = count_tokens_in_text(&encoder, &text);
+        let lines = count_non_empty_lines(&text);
         total += tokens;
         files.push(FileCount {
             path: path.to_path_buf(),
             tokens,
+            lines,
         });
     }
 

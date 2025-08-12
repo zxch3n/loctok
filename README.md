@@ -8,6 +8,7 @@ Count LLM tokens in the current folder (or a given path) while respecting .gitig
 - Total and per-file token counts
 - Text or JSON output
 - Optional hidden files and max per-file size
+ - By-language summary table (Language | line of code | token count)
 
 ## Install
 
@@ -28,6 +29,7 @@ cargo run --release -- .
 
 ```bash
 # Count tokens in current directory (defaults to cl100k_base)
+# Default output: by-language table with comma-formatted numbers
  tokcount
 
 # Count tokens in a specific path
@@ -44,6 +46,9 @@ cargo run --release -- .
 
 # Include hidden files and limit per-file size to 1 MiB
  tokcount --hidden --max_size 1048576
+
+# Show per-file breakdown (also with formatted numbers)
+ tokcount --per-file
 ```
 
 ### Output (text)
@@ -52,6 +57,18 @@ cargo run --release -- .
        456  README.md
 ------------------------------------------------------------
 Total tokens: 34567
+```
+
+### By-language table
+```
+----------------------------------------------
+Language        line of code    token count
+----------------------------------------------
+Rust                    6002          123456
+YAML                    3242           22222
+Markdown                 212            4321
+SUM:                    9456          149999
+----------------------------------------------
 ```
 
 ### Output (json)
@@ -80,4 +97,3 @@ Total tokens: 34567
 ## License
 
 MIT or Apache-2.0
-
