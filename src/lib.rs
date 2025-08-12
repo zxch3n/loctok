@@ -45,6 +45,7 @@ pub fn get_encoder(encoding: &str) -> Result<CoreBPE> {
         "cl100k_base" => tiktoken_rs::cl100k_base().context("Failed to init cl100k_base"),
         "o200k_base" => tiktoken_rs::o200k_base().context("Failed to init o200k_base"),
         "p50k_base" => tiktoken_rs::p50k_base().context("Failed to init p50k_base"),
+        "p50k_edit" => tiktoken_rs::p50k_edit().context("Failed to init p50k_edit"),
         "r50k_base" => tiktoken_rs::r50k_base().context("Failed to init r50k_base"),
         other => anyhow::bail!("Unsupported encoding: {other}"),
     }

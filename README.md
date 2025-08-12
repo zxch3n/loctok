@@ -1,16 +1,15 @@
 # tokcount
 
-Count LLM tokens in the current folder (or a given path) while respecting .gitignore. Useful for estimating context sizes and repository token budgets.
+Count LLM tokens and lines of code in a folder (gitignore-aware). Handy for sizing context windows and budgeting tokens across a codebase.
 
 ## Features
-- Gitignore-aware directory scan
-- Tiktoken-based encodings (cl100k_base, o200k_base, p50k_base, r50k_base)
-- Total and per-file token counts
-- Text or JSON output
-- Optional hidden files and max per-file size
- - By-language summary table (Language | line of code | token count)
-- Multi-threaded file processing (Rayon) for faster scans on large repos
- - Progress indicator while scanning (printed to stderr)
+
+- Gitignore-aware scan (respects `.gitignore`, global gitignore, and git excludes)
+- Tiktoken encodings: `o200k_base` (default), `cl100k_base`, `p50k_base`, `p50k_edit`, `r50k_base`
+- By-language summary table, JSON report, or file tree view
+- Extension filter via `--ext rs,py,ts` (case-insensitive, no leading dots)
+- Optional inclusion of hidden files via `--hidden`
+- Fast parallel scanning (Rayon) with a live progress indicator (stderr)
 
 ## Install
 
@@ -19,89 +18,196 @@ Requires Rust (1.70+ recommended).
 ```bash
 # From the project root
 cargo install --path .
-```
 
-If you prefer, you can build and run directly:
-
-```bash
+# Or build and run directly
 cargo run --release -- .
 ```
 
-## Usage
+## CLI Usage
 
 ```bash
-# Count tokens in current directory (defaults to cl100k_base)
-# Default output: by-language table with comma-formatted numbers
- tokcount
+# Count tokens in current directory
+tokcount
 
-# Count tokens in a specific path
- tokcount path/to/dir
-
-# Show per-file counts
- tokcount --per-file
+# Count tokens in a given path
+tokcount path/to/dir
 
 # JSON output
- tokcount --format json > counts.json
+tokcount --format json > counts.json
 
-# Use a different encoding
- tokcount --encoding o200k_base
+# File tree with per-node LOC and tokens
+tokcount --format tree
 
-# Include hidden files and limit per-file size to 1 MiB
- tokcount --hidden --max_size 1048576
+# Use a specific encoding
+tokcount --encoding cl100k_base
 
-# Show per-file breakdown (also with formatted numbers)
- tokcount --per-file
+# Include only certain extensions (no dots)
+tokcount --ext rs,md,ts
 
-# Only include specific extensions (comma-separated, case-insensitive)
- tokcount --ext rs,md,ts
+# Include hidden files (dotfiles)
+tokcount --hidden
 
-# Disable progress output (defaults to on; prints to stderr)
- tokcount --progress=false
+# Progress prints to stderr; to silence in scripts, redirect:
+tokcount --format json 2>/dev/null
 ```
 
-### Output (text)
+Run `tokcount --help` to see all options.
+
+## Examples
+
+The examples below were produced by running against `tests/fixtures` in this repo.
+
+### By-language table (default)
+
 ```
-      1234  src/main.rs
-       456  README.md
-------------------------------------------------------------
-Total tokens: 34567
+> tokcount
+
+595.171834ms (655.27 files/s)
+╭────────────┬───────────────┬─────────────╮
+│ Language   │ lines of code │ token count │
+├────────────┼───────────────┼─────────────┤
+│ Rust       │       109,910 │     894,106 │
+│ Other      │        13,705 │     174,612 │
+│ YAML       │         4,668 │      91,801 │
+│ TypeScript │         6,224 │      53,639 │
+│ Markdown   │         1,584 │      17,791 │
+│ TOML       │         1,260 │      11,727 │
+│ SVG        │           222 │      10,950 │
+│ JSON       │           261 │       4,001 │
+│ Vue        │           214 │       1,524 │
+│ Text       │           119 │       1,296 │
+│ CSS        │            69 │         420 │
+│ JavaScript │            26 │         277 │
+│ HTML       │            13 │         112 │
+│ Shell      │             5 │          29 │
+│ SUM:       │       138,280 │   1,262,285 │
+╰────────────┴───────────────┴─────────────╯
 ```
 
-### By-language table
+### Tree view
+
 ```
-----------------------------------------------
-Language        line of code    token count
-----------------------------------------------
-Rust                    6002          123456
-YAML                    3242           22222
-Markdown                 212            4321
-SUM:                    9456          149999
-----------------------------------------------
+> tokcount --format tree
+
+379.958459ms (21.05 files/s)
+
+Name                           LOC       TOK
+--------------------------------------------
+    ┌── lib.rs                 332     3,213
+    ├── main.rs                573     4,707
+┌── src/                       905     7,920
+│           ┌── kept2.txt        1         3
+│       ┌── nested/              1         3
+│       ├── kept.txt             1         3
+│   ┌── fixtures/                2         6
+│   ├── integration.rs          69       790
+├── tests/                      71       796
+├── Cargo.lock                 877    10,198
+├── Cargo.toml                  26       201
+├── README.md                  110     1,174
+./                           1,989    20,289
 ```
 
-### Output (json)
+### JSON
+
 ```json
+> tokcount --format json
+
 {
-  "path": ".",
-  "encoding": "cl100k_base",
-  "total": 34567,
+  "by_language": [
+    {
+      "language": "Other",
+      "lines": 877,
+      "tokens": 10198
+    },
+    {
+      "language": "Rust",
+      "lines": 974,
+      "tokens": 8710
+    },
+    {
+      "language": "Markdown",
+      "lines": 120,
+      "tokens": 1316
+    },
+    {
+      "language": "TOML",
+      "lines": 26,
+      "tokens": 201
+    },
+    {
+      "language": "Text",
+      "lines": 2,
+      "tokens": 6
+    }
+  ],
+  "encoding": "o200k_base",
   "files": [
-    { "path": "src/main.rs", "tokens": 1234 },
-    { "path": "README.md", "tokens": 456 }
-  ]
+    {
+      "lines": 26,
+      "path": "./Cargo.toml",
+      "tokens": 201
+    },
+    {
+      "lines": 1,
+      "path": "./tests/fixtures/nested/kept2.txt",
+      "tokens": 3
+    },
+    {
+      "lines": 1,
+      "path": "./tests/fixtures/kept.txt",
+      "tokens": 3
+    },
+    {
+      "lines": 69,
+      "path": "./tests/integration.rs",
+      "tokens": 790
+    },
+    {
+      "lines": 877,
+      "path": "./Cargo.lock",
+      "tokens": 10198
+    },
+    {
+      "lines": 120,
+      "path": "./README.md",
+      "tokens": 1316
+    },
+    {
+      "lines": 332,
+      "path": "./src/lib.rs",
+      "tokens": 3213
+    },
+    {
+      "lines": 573,
+      "path": "./src/main.rs",
+      "tokens": 4707
+    }
+  ],
+  "models": [
+    "GPT-4o",
+    "GPT-4.1",
+    "o1",
+    "o3",
+    "o4"
+  ],
+  "path": ".",
+  "token_number": 200000,
+  "total": 20431
 }
 ```
 
-## Notes
-- The scan respects .gitignore, global git ignores, and git excludes by default.
-- Non-UTF8 files are handled via lossy decoding; binary files may still be counted if they pass filters.
-- Encodings are provided by tiktoken-rs. If an unsupported encoding is specified, the CLI exits with an error.
- - Progress updates print to stderr so they won’t pollute JSON or table output on stdout.
+## Behavior and Notes
+
+- Respects `.gitignore`, global gitignore, and git excludes; also adds `.gitignore` as a custom ignore file in non-git contexts.
+- Only UTF‑8 text files are counted; non‑UTF‑8 files are skipped silently.
+- Language grouping is inferred from file extensions.
+- Progress updates print to stderr. They are ephemeral on TTYs (single updating line) and line-based otherwise. Redirect or pipe stderr to silence in scripts.
 
 ## Development
 
 - Run tests: `cargo test`
-- Lint/format: `cargo fmt` (if installed) and `cargo clippy` (optional)
+- Optional: `cargo fmt` and `cargo clippy`
 
 ## License
 

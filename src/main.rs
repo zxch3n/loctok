@@ -1,12 +1,15 @@
-use std::path::PathBuf;
 use std::io::{self, IsTerminal, Write};
+use std::path::PathBuf;
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use clap::{ArgAction, Parser, ValueEnum};
 use num_format::{Locale, ToFormattedString};
 use tabled::settings::{object::Columns, Alignment, Modify, Style};
 use tabled::{Table, Tabled};
-use tokcount::{aggregate_by_language, count_tokens_in_path, count_tokens_in_path_with_progress, Options};
+use tokcount::{
+    aggregate_by_language, count_tokens_in_path, count_tokens_in_path_with_progress, Options,
+};
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
 enum OutputFormat {
@@ -29,7 +32,7 @@ struct Cli {
     #[arg(default_value = ".")]
     path: PathBuf,
 
-    /// Encoding to use (cl100k_base, o200k_base, p50k_base, r50k_base)
+    /// Encoding to use (cl100k_base, o200k_base, p50k_base, p50k_edit, r50k_base)
     #[arg(long, default_value = "o200k_base")]
     encoding: String,
 
@@ -51,7 +54,38 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
+    let start = Instant::now();
     let args = Cli::parse();
+    // Helper: map encoding name to token number and model families
+    struct EncodingInfo {
+        token_number: usize,
+        models: &'static [&'static str],
+    }
+    fn encoding_info(enc: &str) -> Option<EncodingInfo> {
+        match enc {
+            "o200k_base" => Some(EncodingInfo {
+                token_number: 200_000,
+                models: &["GPT-4o", "GPT-4.1", "o1", "o3", "o4"],
+            }),
+            "cl100k_base" => Some(EncodingInfo {
+                token_number: 100_000,
+                models: &["ChatGPT", "text-embedding-ada-002"],
+            }),
+            "p50k_base" => Some(EncodingInfo {
+                token_number: 50_000,
+                models: &["Code models", "text-davinci-002", "text-davinci-003"],
+            }),
+            "p50k_edit" => Some(EncodingInfo {
+                token_number: 50_000,
+                models: &["text-davinci-edit-001", "code-davinci-edit-001"],
+            }),
+            "r50k_base" => Some(EncodingInfo {
+                token_number: 50_000,
+                models: &["GPT-3 (davinci)"],
+            }),
+            _ => None,
+        }
+    }
     // Parse ext filter: comma-separated list; case-insensitive; strip leading dots
     let include_exts = {
         let s = args.ext.trim();
@@ -151,6 +185,8 @@ fn main() -> Result<()> {
             let json = serde_json::json!({
                 "path": args.path,
                 "encoding": args.encoding,
+                "token_number": encoding_info(&args.encoding).map(|i| i.token_number),
+                "models": encoding_info(&args.encoding).map(|i| i.models.to_vec()),
                 "total": result.total,
                 "files": result
                     .files
@@ -167,11 +203,41 @@ fn main() -> Result<()> {
         }
         OutputFormat::Table => {
             // Default mode: always show by-language table
+            let elapsed = start.elapsed();
+            println!(
+                "{:?} ({:.2} files/s)\n",
+                elapsed,
+                result.files.len() as f64 / elapsed.as_secs_f64()
+            );
             print_by_language_table(&result);
-            println!("Total tokens: {}", fmt_num(result.total));
+            // println!("Total tokens: {}", fmt_num(result.total));
+            // if let Some(info) = encoding_info(&args.encoding) {
+            //     let models = info.models.join(", ");
+            //     println!(
+            //         "Encoding: {} | Models: {} | Token number: {}",
+            //         args.encoding,
+            //         models,
+            //         fmt_num(info.token_number)
+            //     );
+            // }
         }
         OutputFormat::Tree => {
+            let elapsed = start.elapsed();
+            println!(
+                "{:?} ({:.2} files/s)\n",
+                elapsed,
+                result.files.len() as f64 / elapsed.as_secs_f64()
+            );
             print_tree(&args.path, &result.files);
+            // if let Some(info) = encoding_info(&args.encoding) {
+            //     let models = info.models.join(", ");
+            //     println!(
+            //         "\nEncoding: {} | Models: {} | Token number: {}",
+            //         args.encoding,
+            //         models,
+            //         fmt_num(info.token_number)
+            //     );
+            // }
         }
     }
 
