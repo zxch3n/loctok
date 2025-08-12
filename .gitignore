@@ -1,0 +1,20 @@
+# Rust/Cargo
+target/
+.cargo/
+**/*.rs.bk
+
+# Editors/IDEs
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*.vimrc.tmp
+
+# Logs, outputs
+*.log
+counts.json
+
+# Node/npm leftovers (if present)
+node_modules/
+
