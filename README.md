@@ -9,6 +9,8 @@ Count LLM tokens in the current folder (or a given path) while respecting .gitig
 - Text or JSON output
 - Optional hidden files and max per-file size
  - By-language summary table (Language | line of code | token count)
+- Multi-threaded file processing (Rayon) for faster scans on large repos
+ - Progress indicator while scanning (printed to stderr)
 
 ## Install
 
@@ -52,6 +54,9 @@ cargo run --release -- .
 
 # Only include specific extensions (comma-separated, case-insensitive)
  tokcount --ext rs,md,ts
+
+# Disable progress output (defaults to on; prints to stderr)
+ tokcount --progress=false
 ```
 
 ### Output (text)
@@ -91,6 +96,7 @@ SUM:                    9456          149999
 - The scan respects .gitignore, global git ignores, and git excludes by default.
 - Non-UTF8 files are handled via lossy decoding; binary files may still be counted if they pass filters.
 - Encodings are provided by tiktoken-rs. If an unsupported encoding is specified, the CLI exits with an error.
+ - Progress updates print to stderr so they won’t pollute JSON or table output on stdout.
 
 ## Development
 

@@ -1,11 +1,12 @@
 use std::path::PathBuf;
+use std::io::{self, IsTerminal, Write};
 
 use anyhow::{Context, Result};
 use clap::{ArgAction, Parser, ValueEnum};
 use num_format::{Locale, ToFormattedString};
 use tabled::settings::{object::Columns, Alignment, Modify, Style};
 use tabled::{Table, Tabled};
-use tokcount::{aggregate_by_language, count_tokens_in_path, Options};
+use tokcount::{aggregate_by_language, count_tokens_in_path, count_tokens_in_path_with_progress, Options};
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
 enum OutputFormat {
@@ -43,6 +44,10 @@ struct Cli {
     /// Comma-separated list of file extensions to include (e.g., "rs,py,js"). If empty, all files are processed.
     #[arg(long, default_value = "")]
     ext: String,
+
+    /// Show progress while scanning (prints to stderr). Use --progress=false to disable.
+    #[arg(long, default_value_t = true)]
+    progress: bool,
 }
 
 fn main() -> Result<()> {
@@ -74,8 +79,72 @@ fn main() -> Result<()> {
         include_exts,
     };
 
-    let result = count_tokens_in_path(&args.path, &opts)
-        .with_context(|| format!("failed to scan {}", args.path.display()))?;
+    let result = if args.progress {
+        use std::sync::{Arc, Mutex};
+        use std::time::Instant;
+
+        // Throttle progress prints to avoid flooding the terminal
+        struct ProgState {
+            last: Instant,
+            last_done: usize,
+            last_len: usize,
+        }
+        let state = Arc::new(Mutex::new(ProgState {
+            last: Instant::now(),
+            last_done: 0,
+            last_len: 0,
+        }));
+        let state_cloned = state.clone();
+        let is_tty = io::stderr().is_terminal();
+        let progress_cb = move |done: usize, total: usize| {
+            let mut s = state_cloned.lock().unwrap();
+            let now = Instant::now();
+            // Print at most every ~200ms or each 1% or on start/end
+            let step = std::cmp::max(1, total / 100);
+            let due = done == 0
+                || done == total
+                || done.saturating_sub(s.last_done) >= step
+                || now.duration_since(s.last).as_millis() >= 200;
+            if due {
+                let pct = if total > 0 {
+                    (done as f64 * 100.0 / total as f64).round()
+                } else {
+                    100.0
+                };
+                if is_tty {
+                    // In-place update on a single line; clear any leftovers
+                    let msg = format!("Scanning… {}/{} files ({}%)", done, total, pct as u64);
+                    let pad = s.last_len.saturating_sub(msg.chars().count());
+                    // Use CR, then message, then spaces to clear previous, no newline
+                    eprint!("\r{}{}", msg, " ".repeat(pad));
+                    let _ = io::stderr().flush();
+                    s.last_len = msg.chars().count();
+                } else {
+                    // Non-TTY: print each update on its own line
+                    eprintln!("Scanning… {}/{} files ({}%)", done, total, pct as u64);
+                }
+                s.last = now;
+                s.last_done = done;
+            }
+        };
+
+        let res = count_tokens_in_path_with_progress(&args.path, &opts, Some(&progress_cb))
+            .with_context(|| format!("failed to scan {}", args.path.display()))?;
+
+        // Clear the progress line before printing results
+        if is_tty {
+            if let Ok(mut s) = state.lock() {
+                if s.last_len > 0 {
+                    eprint!("\r{:width$}\r", "", width = s.last_len);
+                    let _ = io::stderr().flush();
+                }
+            }
+        }
+        res
+    } else {
+        count_tokens_in_path(&args.path, &opts)
+            .with_context(|| format!("failed to scan {}", args.path.display()))?
+    };
 
     match args.format {
         OutputFormat::Json => {

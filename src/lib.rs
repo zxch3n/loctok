@@ -1,8 +1,11 @@
 use anyhow::{Context, Result};
 use ignore::WalkBuilder;
+use rayon::prelude::*;
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use tiktoken_rs::CoreBPE;
 
 #[derive(Clone, Debug)]
@@ -220,10 +223,18 @@ pub fn aggregate_by_language(files: &[FileCount]) -> Vec<LangSummary> {
 }
 
 pub fn count_tokens_in_path<P: AsRef<Path>>(root: P, opts: &Options) -> Result<CountResult> {
-    let encoder = get_encoder(&opts.encoding)?;
+    count_tokens_in_path_with_progress::<P, fn(usize, usize)>(root, opts, None)
+}
 
-    let mut total: usize = 0;
-    let mut files: Vec<FileCount> = Vec::new();
+/// Like `count_tokens_in_path`, but reports progress via the provided callback.
+/// The callback receives `(processed_files, total_files)`.
+pub fn count_tokens_in_path_with_progress<P, F>(root: P, opts: &Options, progress: Option<&F>) -> Result<CountResult>
+where
+    P: AsRef<Path>,
+    F: Fn(usize, usize) + Send + Sync,
+{
+    // Validate encoder early; per-thread encoders will be created below
+    let _ = get_encoder(&opts.encoding)?;
 
     let mut builder = WalkBuilder::new(root);
     // Honor .gitignore and related git rules explicitly; control hidden files via option
@@ -237,6 +248,8 @@ pub fn count_tokens_in_path<P: AsRef<Path>>(root: P, opts: &Options) -> Result<C
     builder.add_custom_ignore_filename(".gitignore");
 
     let walker = builder.build();
+    // Collect file paths first (sequential, cheap), then process in parallel
+    let mut paths: Vec<PathBuf> = Vec::new();
     for dent in walker {
         let dent = match dent {
             Ok(d) => d,
@@ -268,25 +281,75 @@ pub fn count_tokens_in_path<P: AsRef<Path>>(root: P, opts: &Options) -> Result<C
                 continue;
             }
         }
-        let bytes = match fs::read(path) {
-            Ok(b) => b,
-            Err(err) => {
-                eprintln!("warn: failed to read {}: {err}", path.display());
-                continue;
-            }
-        };
-        let Ok(text) = String::from_utf8(bytes) else {
-            continue;
-        };
-        let tokens = count_tokens_in_text(&encoder, &text);
-        let lines = count_non_empty_lines(&text);
-        total += tokens;
-        files.push(FileCount {
-            path: path.to_path_buf(),
-            tokens,
-            lines,
-        });
+        paths.push(path.to_path_buf());
     }
+    let total_files = paths.len();
+    if let Some(cb) = progress {
+        cb(0, total_files);
+    }
+
+    let processed = AtomicUsize::new(0);
+    let encoding = opts.encoding.clone();
+
+    // Simple encoder pool backed by a mutex-protected stack.
+    struct EncoderPool {
+        encoding: String,
+        inners: Mutex<Vec<CoreBPE>>,
+    }
+    impl EncoderPool {
+        fn new(encoding: String) -> Self {
+            Self {
+                encoding,
+                inners: Mutex::new(Vec::new()),
+            }
+        }
+        fn take(&self) -> CoreBPE {
+            if let Some(enc) = self.inners.lock().unwrap().pop() {
+                return enc;
+            }
+            // Create a new one if pool empty
+            get_encoder(&self.encoding).expect("Failed to init encoder")
+        }
+        fn give(&self, enc: CoreBPE) {
+            self.inners.lock().unwrap().push(enc);
+        }
+    }
+
+    let pool = Arc::new(EncoderPool::new(encoding.clone()));
+
+    let files: Vec<FileCount> = paths
+        .par_iter()
+        .filter_map(|path| {
+            let bytes = match fs::read(path) {
+                Ok(b) => b,
+                Err(err) => {
+                    eprintln!("warn: failed to read {}: {err}", path.display());
+                    return None;
+                }
+            };
+            let Ok(text) = String::from_utf8(bytes) else {
+                return None;
+            };
+
+            let enc = pool.take();
+            let tokens = count_tokens_in_text(&enc, &text);
+            let lines = count_non_empty_lines(&text);
+            pool.give(enc);
+
+            let res = Some(FileCount {
+                path: path.clone(),
+                tokens,
+                lines,
+            });
+            let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
+            if let Some(cb) = progress {
+                cb(done, total_files);
+            }
+            res
+        })
+        .collect();
+
+    let total: usize = files.iter().map(|f| f.tokens).sum();
 
     Ok(CountResult { total, files })
 }
