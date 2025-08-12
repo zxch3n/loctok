@@ -49,6 +49,9 @@ cargo run --release -- .
 
 # Show per-file breakdown (also with formatted numbers)
  tokcount --per-file
+
+# Only include specific extensions (comma-separated, case-insensitive)
+ tokcount --ext rs,md,ts
 ```
 
 ### Output (text)

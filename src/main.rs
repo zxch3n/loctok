@@ -40,15 +40,38 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = OutputFormat::Table)]
     format: OutputFormat,
 
+    /// Comma-separated list of file extensions to include (e.g., "rs,py,js"). If empty, all files are processed.
     #[arg(long, default_value = "")]
-    filter: String,
+    ext: String,
 }
 
 fn main() -> Result<()> {
     let args = Cli::parse();
+    // Parse ext filter: comma-separated list; case-insensitive; strip leading dots
+    let include_exts = {
+        let s = args.ext.trim();
+        if s.is_empty() {
+            None
+        } else {
+            let mut set = std::collections::HashSet::new();
+            for part in s.split(',') {
+                let p = part.trim().trim_start_matches('.').to_ascii_lowercase();
+                if !p.is_empty() {
+                    set.insert(p);
+                }
+            }
+            if set.is_empty() {
+                None
+            } else {
+                Some(set)
+            }
+        }
+    };
+
     let opts = Options {
         encoding: args.encoding.clone(),
         include_hidden: args.hidden,
+        include_exts,
     };
 
     let result = count_tokens_in_path(&args.path, &opts)
@@ -91,7 +114,7 @@ fn print_by_language_table(result: &tokcount::CountResult) {
     struct Row {
         #[tabled(rename = "Language")]
         language: String,
-        #[tabled(rename = "line of code")]
+        #[tabled(rename = "lines of code")]
         loc: String,
         #[tabled(rename = "token count")]
         tokens: String,
@@ -249,7 +272,12 @@ fn print_tree(root: &Path, files: &[tokcount::FileCount]) {
     fn vis_len(s: &str) -> usize {
         s.chars().count()
     }
-    fn compute_label_widths(node: &TreeNode, line_prefix: &str, child_prefix: &str, max_label: &mut usize) {
+    fn compute_label_widths(
+        node: &TreeNode,
+        line_prefix: &str,
+        child_prefix: &str,
+        max_label: &mut usize,
+    ) {
         let name_plain = match node.kind {
             NodeKind::Dir => format!("{}/", node.name),
             NodeKind::File => node.name.clone(),
@@ -270,7 +298,10 @@ fn print_tree(root: &Path, files: &[tokcount::FileCount]) {
             .collect();
         dirs.sort_by(|a, b| a.name.cmp(&b.name));
         files.sort_by(|a, b| a.name.cmp(&b.name));
-        let ordered = dirs.into_iter().chain(files.into_iter()).collect::<Vec<_>>();
+        let ordered = dirs
+            .into_iter()
+            .chain(files.into_iter())
+            .collect::<Vec<_>>();
 
         for (idx, child) in ordered.into_iter().enumerate() {
             let is_first = idx == 0;
@@ -401,18 +432,17 @@ fn print_tree(root: &Path, files: &[tokcount::FileCount]) {
             .collect();
         dirs.sort_by(|a, b| a.name.cmp(&b.name));
         files.sort_by(|a, b| a.name.cmp(&b.name));
-        let ordered = dirs.into_iter().chain(files.into_iter()).collect::<Vec<_>>();
+        let ordered = dirs
+            .into_iter()
+            .chain(files.into_iter())
+            .collect::<Vec<_>>();
 
         let len = ordered.len();
         for (idx, child) in ordered.into_iter().enumerate() {
             let is_first = idx == 0;
             let branch = if is_first { "┌── " } else { "├── " };
             let child_line_prefix = format!("{}{}", child_prefix, branch);
-            let next_prefix = format!(
-                "{}{}",
-                child_prefix,
-                if is_first { "    " } else { "│   " }
-            );
+            let next_prefix = format!("{}{}", child_prefix, if is_first { "    " } else { "│   " });
             print_node_post(
                 child,
                 child_line_prefix,
@@ -439,5 +469,13 @@ fn print_tree(root: &Path, files: &[tokcount::FileCount]) {
     }
 
     // Kick off from root with empty prefixes so root appears last
-    print_node_post(&tree, String::new(), String::new(), gap, max_label, max_loc, max_tok);
+    print_node_post(
+        &tree,
+        String::new(),
+        String::new(),
+        gap,
+        max_label,
+        max_loc,
+        max_tok,
+    );
 }

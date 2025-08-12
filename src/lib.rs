@@ -9,6 +9,8 @@ use tiktoken_rs::CoreBPE;
 pub struct Options {
     pub encoding: String,
     pub include_hidden: bool,
+    // Optional whitelist of file extensions to include (lowercased, no leading dot)
+    pub include_exts: Option<std::collections::HashSet<String>>,
 }
 
 impl Default for Options {
@@ -16,6 +18,7 @@ impl Default for Options {
         Self {
             encoding: "cl100k_base".to_string(),
             include_hidden: false,
+            include_exts: None,
         }
     }
 }
@@ -251,6 +254,20 @@ pub fn count_tokens_in_path<P: AsRef<Path>>(root: P, opts: &Options) -> Result<C
         let _ = ft; // silence unused in some toolchains
 
         let path = dent.path();
+        // Filter by extension if requested
+        if let Some(exts) = &opts.include_exts {
+            let ext = path
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s.trim_start_matches('.').to_ascii_lowercase());
+            let keep = match ext {
+                Some(ref e) => exts.contains(e),
+                None => exts.contains(""),
+            };
+            if !keep {
+                continue;
+            }
+        }
         let bytes = match fs::read(path) {
             Ok(b) => b,
             Err(err) => {
