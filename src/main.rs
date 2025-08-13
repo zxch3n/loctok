@@ -4,12 +4,12 @@ use std::time::Instant;
 
 use anyhow::{Context, Result};
 use clap::{ArgAction, Parser, ValueEnum};
-use num_format::{Locale, ToFormattedString};
-use tabled::settings::{object::Columns, Alignment, Modify, Style};
-use tabled::{Table, Tabled};
 use loctok::{
     aggregate_by_language, count_tokens_in_path, count_tokens_in_path_with_progress, Options,
 };
+use num_format::{Locale, ToFormattedString};
+use tabled::settings::{object::Columns, Alignment, Modify, Style};
+use tabled::{Table, Tabled};
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
 enum OutputFormat {
@@ -183,10 +183,7 @@ fn main() -> Result<()> {
     match args.format {
         OutputFormat::Json => {
             let json = serde_json::json!({
-                "path": args.path,
                 "encoding": args.encoding,
-                "token_number": encoding_info(&args.encoding).map(|i| i.token_number),
-                "models": encoding_info(&args.encoding).map(|i| i.models.to_vec()),
                 "total": result.total,
                 "files": result
                     .files

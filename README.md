@@ -123,7 +123,7 @@ Name                           LOC       TOK
 
 ### JSON
 
-```json
+```
 > loctok --format json
 
 {
@@ -138,21 +138,7 @@ Name                           LOC       TOK
       "lines": 974,
       "tokens": 8710
     },
-    {
-      "language": "Markdown",
-      "lines": 120,
-      "tokens": 1316
-    },
-    {
-      "language": "TOML",
-      "lines": 26,
-      "tokens": 201
-    },
-    {
-      "language": "Text",
-      "lines": 2,
-      "tokens": 6
-    }
+    ...
   ],
   "encoding": "o200k_base",
   "files": [
@@ -166,46 +152,8 @@ Name                           LOC       TOK
       "path": "./tests/fixtures/nested/kept2.txt",
       "tokens": 3
     },
-    {
-      "lines": 1,
-      "path": "./tests/fixtures/kept.txt",
-      "tokens": 3
-    },
-    {
-      "lines": 69,
-      "path": "./tests/integration.rs",
-      "tokens": 790
-    },
-    {
-      "lines": 877,
-      "path": "./Cargo.lock",
-      "tokens": 10198
-    },
-    {
-      "lines": 120,
-      "path": "./README.md",
-      "tokens": 1316
-    },
-    {
-      "lines": 332,
-      "path": "./src/lib.rs",
-      "tokens": 3213
-    },
-    {
-      "lines": 573,
-      "path": "./src/main.rs",
-      "tokens": 4707
-    }
+    ...
   ],
-  "models": [
-    "GPT-4o",
-    "GPT-4.1",
-    "o1",
-    "o3",
-    "o4"
-  ],
-  "path": ".",
-  "token_number": 200000,
   "total": 20431
 }
 ```
@@ -215,12 +163,6 @@ Name                           LOC       TOK
 - Respects `.gitignore`, global gitignore, and git excludes; also adds `.gitignore` as a custom ignore file in non-git contexts.
 - Only UTF‑8 text files are counted; non‑UTF‑8 files are skipped silently.
 - Language grouping is inferred from file extensions.
-- Progress updates print to stderr. They are ephemeral on TTYs (single updating line) and line-based otherwise. Redirect or pipe stderr to silence in scripts.
-
-## Development
-
-- Run tests: `cargo test`
-- Optional: `cargo fmt` and `cargo clippy`
 
 ## License
 
