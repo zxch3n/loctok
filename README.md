@@ -2,6 +2,8 @@
 
 Count LOC (lines of code) & TOK (LLM tokens), fast.
 
+<img width="914" height="842" alt="CleanShot 2025-08-13 at 11 16 23@2x" src="https://github.com/user-attachments/assets/f600f9b2-7355-4760-bff4-49db25e10e05" />
+
 ## Features
 
 - Gitignore-aware scan (respects `.gitignore`, global gitignore, and git excludes)
