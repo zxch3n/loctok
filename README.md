@@ -206,10 +206,6 @@ Snippet of the format:
 - Respects `.gitignore`, global gitignore, and git excludes; also adds `.gitignore` as a custom ignore file in non-git contexts.
 - Only UTF‑8 text files are counted; non‑UTF‑8 files are skipped silently.
 - Language grouping is inferred from file extensions.
-- Copy mode requires a platform clipboard tool:
-  - macOS: `pbcopy`
-  - Windows: `clip`
-  - Linux: `xclip` or `xsel`
 
 ## License
 
