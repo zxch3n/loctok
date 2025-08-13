@@ -1,6 +1,6 @@
 {
   "name": "loctok",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Count LOC (lines of code) & TOK (LLM tokens), fast",
   "license": "MIT OR Apache-2.0",
   "bin": {

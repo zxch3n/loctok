@@ -6,6 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tiktoken_rs::CoreBPE;
 
 #[derive(Clone, Debug)]
@@ -101,8 +102,78 @@ pub fn get_encoder(encoding: &str) -> Result<CoreBPE> {
     }
 }
 
+/// Count tokens in a string with a fast path and a timeout fallback.
 pub fn count_tokens_in_text(encoder: &CoreBPE, text: &str) -> usize {
-    encoder.encode_ordinary(text).len()
+    const CHUNK_SIZE: usize = 512; // bytes
+
+    // Quick exit for trivial cases
+    if text.is_empty() {
+        return 0;
+    }
+
+    // For short inputs or when we couldn't split, just do a blocking encode
+    if text.len() <= CHUNK_SIZE * 4 {
+        return encoder.encode_with_special_tokens(text).len();
+    }
+
+    // Split into chunks to avoid some edge cases that can make the progrom super slow
+    // Chunk the input and recurse in parallel (without further timeouts)
+    let chunks = split_text_into_chunks(text, CHUNK_SIZE);
+    if chunks.len() <= 1 {
+        return encoder.encode_with_special_tokens(text).len();
+    }
+    chunks
+        .par_iter()
+        .map(|s| encoder.encode_with_special_tokens(s).len())
+        .sum()
+}
+
+fn split_text_into_chunks<'a>(text: &'a str, max_chunk_bytes: usize) -> Vec<&'a str> {
+    debug_assert!(max_chunk_bytes > 0);
+    let mut chunks: Vec<&'a str> = Vec::new();
+    let mut start = 0usize;
+    let len = text.len();
+
+    while start < len {
+        let remaining = len - start;
+        if remaining <= max_chunk_bytes {
+            chunks.push(&text[start..]);
+            break;
+        }
+
+        // 1) Ensure at least `max_chunk_bytes` bytes in this chunk
+        let mut base_rel = 0usize; // end boundary relative to `start`
+        let mut acc = 0usize;
+        for (off, ch) in text[start..].char_indices() {
+            let w = ch.len_utf8();
+            acc += w;
+            base_rel = off + w; // boundary after this char
+            if acc >= max_chunk_bytes {
+                break;
+            }
+        }
+        let base_end = start + base_rel;
+
+        // 2) Look ahead up to another `max_chunk_bytes` bytes for a nice split
+        let mut extended_end = None;
+        let mut la_bytes = 0usize;
+        for (off, ch) in text[base_end..].char_indices() {
+            let w = ch.len_utf8();
+            if ch == ' ' || ch == '\n' {
+                extended_end = Some(base_end + off + w); // split after the whitespace
+                break;
+            }
+            la_bytes += w;
+            if la_bytes >= max_chunk_bytes {
+                break;
+            }
+        }
+        let end = extended_end.unwrap_or(base_end);
+        chunks.push(&text[start..end]);
+        start = end;
+    }
+
+    chunks
 }
 
 pub fn count_non_empty_lines(text: &str) -> usize {
@@ -1197,6 +1268,22 @@ where
     let files: Vec<FileCount> = paths
         .par_iter()
         .filter_map(|path| {
+            // Skip files larger than 100MB
+            let metadata = match fs::metadata(path) {
+                Ok(m) => m,
+                Err(err) => {
+                    eprintln!("warn: failed to get metadata for {}: {err}", path.display());
+                    return None;
+                }
+            };
+            if metadata.len() > 64 * 1024 * 1024 {
+                eprintln!(
+                    "warn: skipping large file ({}MB): {}",
+                    metadata.len() / 1024 / 1024,
+                    path.display()
+                );
+                return None;
+            }
             let bytes = match fs::read(path) {
                 Ok(b) => b,
                 Err(err) => {
@@ -1204,14 +1291,15 @@ where
                     return None;
                 }
             };
+            let byte_len = bytes.len();
             let Ok(text) = String::from_utf8(bytes) else {
                 return None;
             };
 
             let enc = pool.take();
             let tokens = count_tokens_in_text(&enc, &text);
-            let lines = count_non_empty_lines(&text);
             pool.give(enc);
+            let lines = count_non_empty_lines(&text);
 
             let res = Some(FileCount {
                 path: path.clone(),
