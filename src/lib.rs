@@ -65,7 +65,7 @@ pub fn language_from_path(path: &Path) -> String {
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    match ext.as_str() {
+    let ans = match ext.as_str() {
         "abap" => "ABAP",
         "ac" => "m4",
         "ada" => "Ada",
@@ -1052,8 +1052,13 @@ pub fn language_from_path(path: &Path) -> String {
         "zsh" => "zsh",
         "rego" => "Rego",
         _ => "Others",
-    }
-    .to_string()
+    };
+    let ans = if ans.contains('/') {
+        ans.split('/').next().unwrap_or(ans)
+    } else {
+        ans
+    };
+    ans.to_string()
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -1219,4 +1224,19 @@ where
     let total: usize = files.iter().map(|f| f.tokens).sum();
 
     Ok(CountResult { total, files })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_file_kind() {
+        let filename = "hello.ts";
+        let lang = language_from_path(Path::new(filename));
+        assert_eq!(lang, "TypeScript");
+        let filename = "hello.rs";
+        let lang = language_from_path(Path::new(filename));
+        assert_eq!(lang, "Rust");
+    }
 }
