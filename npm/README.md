@@ -56,6 +56,13 @@ loctok --format json 2>/dev/null
 
 # See all options
 loctok --help
+
+# Concatenate filtered files and copy to clipboard
+loctok copy                  # from current directory
+loctok copy path/to/dir      # from a given path
+
+# Copy with filters and also print the content
+loctok --ext rs,md --hidden copy --show
 ```
 
 Supported encodings: `o200k_base` (default), `cl100k_base`, `p50k_base`, `p50k_edit`, `r50k_base`.
@@ -118,6 +125,32 @@ Notes:
 
 - Progress updates print to stderr; they are in-place on TTYs and line-based otherwise.
 - Token counts use the chosen encoding; `token_number` and `models` are informative mapping hints.
+- Copy mode requires a platform clipboard tool:
+  - macOS: `pbcopy`
+  - Windows: `clip`
+  - Linux: `xclip` or `xsel`
+
+## Copy Mode
+
+Use copy to bundle filtered files into a single, structured payload that is copied to your clipboard. Optionally print it with `--show`.
+
+```
+loctok copy [PATH] [--show] [--ext rs,md] [--hidden]
+```
+
+Format snippet:
+
+```
+├── src
+│   ├── lib.rs
+│   └── main.rs
+└── README.md
+
+/src/lib.rs:
+--------------------------------------------------------------------------------
+1 | use anyhow::{Context, Result};
+2 | // ...
+```
 
 ## Supported Platforms
 

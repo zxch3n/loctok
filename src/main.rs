@@ -3,9 +3,10 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
-use clap::{ArgAction, Parser, ValueEnum};
+use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use loctok::{
-    aggregate_by_language, count_tokens_in_path, count_tokens_in_path_with_progress, Options,
+    aggregate_by_language, build_copy_output, collect_filtered_texts, count_tokens_in_path,
+    count_tokens_in_path_with_progress, Options,
 };
 use num_format::{Locale, ToFormattedString};
 use tabled::settings::{object::Columns, Alignment, Modify, Style};
@@ -33,11 +34,11 @@ struct Cli {
     path: PathBuf,
 
     /// Encoding to use (cl100k_base, o200k_base, p50k_base, p50k_edit, r50k_base)
-    #[arg(long, default_value = "o200k_base")]
+    #[arg(long, default_value = "o200k_base", global = true)]
     encoding: String,
 
     /// Include hidden files (dotfiles)
-    #[arg(long, action = ArgAction::SetTrue)]
+    #[arg(long, action = ArgAction::SetTrue, global = true)]
     hidden: bool,
 
     /// Output format (text or json)
@@ -45,12 +46,29 @@ struct Cli {
     format: OutputFormat,
 
     /// Comma-separated list of file extensions to include (e.g., "rs,py,js"). If empty, all files are processed.
-    #[arg(long, default_value = "")]
+    #[arg(long, default_value = "", global = true)]
     ext: String,
 
     /// Show progress while scanning (prints to stderr). Use --progress=false to disable.
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, global = true)]
     progress: bool,
+
+    /// Subcommands
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Concatenate filtered files into a single clipboard-friendly payload
+    Copy {
+        /// Root path to scan (defaults to current directory)
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// Also print the copied content to stdout
+        #[arg(long, action = ArgAction::SetTrue)]
+        show: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -112,6 +130,28 @@ fn main() -> Result<()> {
         include_hidden: args.hidden,
         include_exts,
     };
+
+    // Handle subcommands first
+    if let Some(Commands::Copy { path, show }) = &args.command {
+        // Copy mode: no progress UI (quiet) to keep stdout clean
+        let result = count_tokens_in_path(path, &opts)
+            .with_context(|| format!("failed to scan {}", path.display()))?;
+        let texts = collect_filtered_texts(path, &opts)?;
+        let payload = build_copy_output(path, &texts);
+        copy_to_clipboard(&payload)?;
+        if *show {
+            print!("{}", payload);
+        }
+        // Lines in payload are counted including empty lines, consistent with numbering
+        let sum_lines: usize = texts.iter().map(|(_, t)| t.lines().count()).sum();
+        println!(
+            "Copied {} lines ({} tokens, {} bytes)",
+            sum_lines,
+            fmt_num(result.total),
+            fmt_num(payload.len())
+        );
+        return Ok(());
+    }
 
     let result = if args.progress {
         use std::sync::{Arc, Mutex};
@@ -239,6 +279,94 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn copy_to_clipboard(text: &str) -> Result<()> {
+    use std::io::Write as _;
+    use std::process::{Command, Stdio};
+
+    #[cfg(target_os = "macos")]
+    {
+        let mut child = Command::new("pbcopy")
+            .stdin(Stdio::piped())
+            .spawn()
+            .context("failed to spawn pbcopy")?;
+        child
+            .stdin
+            .as_mut()
+            .context("failed to open pbcopy stdin")?
+            .write_all(text.as_bytes())
+            .context("failed to write to pbcopy")?;
+        let status = child.wait().context("failed to wait for pbcopy")?;
+        if status.success() {
+            return Ok(());
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut child = Command::new("cmd")
+            .args(["/C", "clip"])
+            .stdin(Stdio::piped())
+            .spawn()
+            .context("failed to spawn clip")?;
+        child
+            .stdin
+            .as_mut()
+            .context("failed to open clip stdin")?
+            .write_all(text.as_bytes())
+            .context("failed to write to clip")?;
+        let status = child.wait().context("failed to wait for clip")?;
+        if status.success() {
+            return Ok(());
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Try xclip, then xsel
+        let try_xclip = || -> Result<()> {
+            let mut child = Command::new("xclip")
+                .args(["-selection", "clipboard"])
+                .stdin(Stdio::piped())
+                .spawn()
+                .context("failed to spawn xclip")?;
+            child
+                .stdin
+                .as_mut()
+                .context("failed to open xclip stdin")?
+                .write_all(text.as_bytes())
+                .context("failed to write to xclip")?;
+            let status = child.wait().context("failed to wait for xclip")?;
+            anyhow::ensure!(status.success(), "xclip exited with error");
+            Ok(())
+        };
+        if try_xclip().is_ok() {
+            return Ok(());
+        }
+        let try_xsel = || -> Result<()> {
+            let mut child = Command::new("xsel")
+                .args(["-i", "-b"])
+                .stdin(Stdio::piped())
+                .spawn()
+                .context("failed to spawn xsel")?;
+            child
+                .stdin
+                .as_mut()
+                .context("failed to open xsel stdin")?
+                .write_all(text.as_bytes())
+                .context("failed to write to xsel")?;
+            let status = child.wait().context("failed to wait for xsel")?;
+            anyhow::ensure!(status.success(), "xsel exited with error");
+            Ok(())
+        };
+        if try_xsel().is_ok() {
+            return Ok(());
+        }
+    }
+
+    // If we reached here, we couldn't copy automatically.
+    anyhow::bail!("failed to copy to clipboard: no supported clipboard tool found")
 }
 
 fn print_by_language_table(result: &loctok::CountResult) {

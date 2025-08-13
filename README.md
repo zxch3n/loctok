@@ -9,6 +9,7 @@ Count LOC (lines of code) & TOK (LLM tokens), fast.
 - Gitignore-aware scan (respects `.gitignore`, global gitignore, and git excludes)
 - Tiktoken encodings: `o200k_base` (default), `cl100k_base`, `p50k_base`, `p50k_edit`, `r50k_base`
 - By-language summary table, JSON report, or file tree view
+- Copy mode to concatenate filtered files into a clipboard-ready payload
 - Extension filter via `--ext rs,py,ts` (case-insensitive, no leading dots)
 - Optional inclusion of hidden files via `--hidden`
 - Fast parallel scanning (Rayon) with a live progress indicator (stderr)
@@ -62,6 +63,13 @@ loctok --hidden
 
 # Progress prints to stderr; to silence in scripts, redirect:
 loctok --format json 2>/dev/null
+
+# Concatenate filtered files and copy to clipboard
+loctok copy                  # from current directory
+loctok copy path/to/dir      # from a given path
+
+# Copy with filters and also print the content
+loctok --ext rs,md --hidden copy --show
 ```
 
 Run `loctok --help` to see all options.
@@ -158,11 +166,50 @@ Name                           LOC       TOK
 }
 ```
 
+## Copy Mode
+
+Use copy to bundle filtered files into a single, structured payload that is copied to your clipboard. Optionally print it with `--show`.
+
+```
+loctok copy [PATH] [--show] [--ext rs,md] [--hidden]
+```
+
+What it does:
+
+- Renders a tree of the included files
+- Appends each file as a section with a header and numbered lines
+- Copies the entire payload to your system clipboard
+- Prints a summary like: `Copied 123 lines (22,333 tokens)`
+
+Snippet of the format:
+
+```
+├── src
+│   ├── lib.rs
+│   └── main.rs
+└── README.md
+
+/src/lib.rs:
+--------------------------------------------------------------------------------
+1 | use anyhow::{Context, Result};
+2 | // ...
+
+
+/README.md:
+--------------------------------------------------------------------------------
+1 | # loctok
+2 | Count LOC and tokens
+```
+
 ## Behavior and Notes
 
 - Respects `.gitignore`, global gitignore, and git excludes; also adds `.gitignore` as a custom ignore file in non-git contexts.
 - Only UTF‑8 text files are counted; non‑UTF‑8 files are skipped silently.
 - Language grouping is inferred from file extensions.
+- Copy mode requires a platform clipboard tool:
+  - macOS: `pbcopy`
+  - Windows: `clip`
+  - Linux: `xclip` or `xsel`
 
 ## License
 

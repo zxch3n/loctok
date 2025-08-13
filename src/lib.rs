@@ -39,6 +39,56 @@ pub struct CountResult {
     pub files: Vec<FileCount>,
 }
 
+/// Internal helper: enumerate files under `root` honoring ignore rules and `opts` filters.
+fn enumerate_filtered_paths<P: AsRef<Path>>(root: P, opts: &Options) -> Vec<PathBuf> {
+    let mut builder = WalkBuilder::new(root);
+    // Honor .gitignore and related git rules explicitly; control hidden files via option
+    builder.hidden(!opts.include_hidden);
+    builder.follow_links(false);
+    builder.ignore(true); // respect .ignore
+    builder.git_ignore(true); // respect .gitignore
+    builder.git_global(true); // respect global gitignore
+    builder.git_exclude(true); // respect .git/info/exclude
+                               // In environments without a .git directory, also treat .gitignore as a custom ignore file
+    builder.add_custom_ignore_filename(".gitignore");
+
+    let walker = builder.build();
+    let mut paths: Vec<PathBuf> = Vec::new();
+    for dent in walker {
+        let dent = match dent {
+            Ok(d) => d,
+            Err(err) => {
+                eprintln!("warn: skipping entry: {err}");
+                continue;
+            }
+        };
+
+        let ft = match dent.file_type() {
+            Some(t) if t.is_file() => t,
+            _ => continue,
+        };
+        let _ = ft; // silence unused in some toolchains
+
+        let path = dent.path();
+        // Filter by extension if requested
+        if let Some(exts) = &opts.include_exts {
+            let ext = path
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s.trim_start_matches('.').to_ascii_lowercase());
+            let keep = match ext {
+                Some(ref e) => exts.contains(e),
+                None => exts.contains(""),
+            };
+            if !keep {
+                continue;
+            }
+        }
+        paths.push(path.to_path_buf());
+    }
+    paths
+}
+
 pub fn get_encoder(encoding: &str) -> Result<CoreBPE> {
     match encoding {
         // Common encodings
@@ -1108,53 +1158,8 @@ where
     // Validate encoder early; per-thread encoders will be created below
     let _ = get_encoder(&opts.encoding)?;
 
-    let mut builder = WalkBuilder::new(root);
-    // Honor .gitignore and related git rules explicitly; control hidden files via option
-    builder.hidden(!opts.include_hidden);
-    builder.follow_links(false);
-    builder.ignore(true); // respect .ignore
-    builder.git_ignore(true); // respect .gitignore
-    builder.git_global(true); // respect global gitignore
-    builder.git_exclude(true); // respect .git/info/exclude
-                               // In environments without a .git directory, also treat .gitignore as a custom ignore file
-    builder.add_custom_ignore_filename(".gitignore");
-
-    let walker = builder.build();
     // Collect file paths first (sequential, cheap), then process in parallel
-    let mut paths: Vec<PathBuf> = Vec::new();
-    for dent in walker {
-        let dent = match dent {
-            Ok(d) => d,
-            Err(err) => {
-                // Skip entries we cannot read, but surface context
-                eprintln!("warn: skipping entry: {err}");
-                continue;
-            }
-        };
-
-        let ft = match dent.file_type() {
-            Some(t) if t.is_file() => t,
-            _ => continue,
-        };
-        let _ = ft; // silence unused in some toolchains
-
-        let path = dent.path();
-        // Filter by extension if requested
-        if let Some(exts) = &opts.include_exts {
-            let ext = path
-                .extension()
-                .and_then(|s| s.to_str())
-                .map(|s| s.trim_start_matches('.').to_ascii_lowercase());
-            let keep = match ext {
-                Some(ref e) => exts.contains(e),
-                None => exts.contains(""),
-            };
-            if !keep {
-                continue;
-            }
-        }
-        paths.push(path.to_path_buf());
-    }
+    let paths: Vec<PathBuf> = enumerate_filtered_paths(&root, opts);
     let total_files = paths.len();
     if let Some(cb) = progress {
         cb(0, total_files);
@@ -1226,6 +1231,136 @@ where
     Ok(CountResult { total, files })
 }
 
+/// Step 1: Extract filtered relative file paths and their UTF-8 content.
+/// Returns `(relative_path, content)` for each file, sorted by path.
+pub fn collect_filtered_texts<P: AsRef<Path>>(
+    root: P,
+    opts: &Options,
+) -> Result<Vec<(PathBuf, String)>> {
+    let root_ref = root.as_ref();
+    let mut rel_and_text: Vec<(PathBuf, String)> = Vec::new();
+    let mut paths = enumerate_filtered_paths(root_ref, opts);
+    // Sort by relative path for deterministic output
+    paths.sort();
+    for abs in paths {
+        let rel = abs.strip_prefix(root_ref).unwrap_or(&abs).to_path_buf();
+        let Ok(bytes) = fs::read(&abs) else { continue };
+        let Ok(text) = String::from_utf8(bytes) else {
+            continue;
+        };
+        rel_and_text.push((rel, text));
+    }
+    Ok(rel_and_text)
+}
+
+/// Step 2: Build final output from relative paths and content collected in step 1.
+/// Format:
+///  - file tree header using ├──/└── and │/    guides
+///  - blank line
+///  - sections per file: `/<path>:` + dashed line + numbered content lines
+pub fn build_copy_output(_root: &Path, rel_and_texts: &[(PathBuf, String)]) -> String {
+    use std::collections::BTreeMap;
+    use std::fmt::Write as _;
+
+    // Normalize path to unix-style with '/'
+    fn path_to_unix_string(p: &Path) -> String {
+        p.components()
+            .map(|c| c.as_os_str().to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
+    #[derive(Default)]
+    struct DirNode {
+        dirs: BTreeMap<String, DirNode>,
+        files: Vec<String>,
+    }
+
+    let mut root_node = DirNode::default();
+    let mut rel_paths: Vec<PathBuf> = rel_and_texts.iter().map(|(p, _)| p.clone()).collect();
+    rel_paths.sort();
+    for rel in &rel_paths {
+        let mut cur = &mut root_node;
+        let mut comps = rel.components().peekable();
+        while let Some(comp) = comps.next() {
+            let name = comp.as_os_str().to_string_lossy().to_string();
+            let is_last = comps.peek().is_none();
+            if is_last {
+                cur.files.push(name);
+            } else {
+                cur = cur.dirs.entry(name).or_default();
+            }
+        }
+    }
+
+    fn render_dir(node: &DirNode, prefix: &str, out: &mut String) {
+        // Order: directories first, then files; both lexicographically
+        let mut dir_names: Vec<_> = node.dirs.keys().cloned().collect();
+        dir_names.sort();
+        let mut file_names = node.files.clone();
+        file_names.sort();
+
+        enum Entry {
+            Dir(String),
+            File(String),
+        }
+        let mut entries: Vec<Entry> = Vec::new();
+        for d in &dir_names {
+            entries.push(Entry::Dir(d.clone()));
+        }
+        for f in &file_names {
+            entries.push(Entry::File(f.clone()));
+        }
+        let len = entries.len();
+        for (idx, e) in entries.into_iter().enumerate() {
+            let last = idx + 1 == len;
+            let (branch, next_prefix) = if last {
+                ("└── ", format!("{}    ", prefix))
+            } else {
+                ("├── ", format!("{}│   ", prefix))
+            };
+            match e {
+                Entry::Dir(name) => {
+                    let _ = writeln!(out, "{}{}{}", prefix, branch, name);
+                    if let Some(child) = node.dirs.get(&name) {
+                        render_dir(child, &next_prefix, out);
+                    }
+                }
+                Entry::File(name) => {
+                    let _ = writeln!(out, "{}{}{}", prefix, branch, name);
+                }
+            }
+        }
+    }
+
+    let mut s = String::new();
+    render_dir(&root_node, "", &mut s);
+    if !s.is_empty() {
+        s.push_str("\n");
+    }
+
+    for (rel, text) in rel_and_texts {
+        let path_unix = path_to_unix_string(rel);
+        s.push_str(
+            "--------------------------------------------------------------------------------\n",
+        );
+        let _ = writeln!(s, "/{}:", path_unix);
+        s.push_str(
+            "--------------------------------------------------------------------------------\n",
+        );
+        for (i, line) in text.lines().enumerate() {
+            if line.is_empty() {
+                let _ = writeln!(s, "{} |", i + 1);
+            } else {
+                let _ = writeln!(s, "{} | {}", i + 1, line);
+            }
+        }
+        s.push_str("\n\n");
+    }
+
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1238,5 +1373,48 @@ mod tests {
         let filename = "hello.rs";
         let lang = language_from_path(Path::new(filename));
         assert_eq!(lang, "Rust");
+    }
+
+    #[test]
+    fn test_build_copy_output() {
+        // Given relative paths and content
+        let inputs = vec![
+            (PathBuf::from("a.txt"), "line1\n\nline2".to_string()),
+            (PathBuf::from("dir/b.txt"), "x\ny".to_string()),
+            (PathBuf::from("dir/sub/c.rs"), "fn main() {}\n".to_string()),
+        ];
+        let out = build_copy_output(Path::new("."), &inputs);
+
+        let expected = "\
+├── dir
+│   ├── sub
+│   │   └── c.rs
+│   └── b.txt
+└── a.txt
+
+--------------------------------------------------------------------------------
+/a.txt:
+--------------------------------------------------------------------------------
+1 | line1
+2 |
+3 | line2
+
+
+--------------------------------------------------------------------------------
+/dir/b.txt:
+--------------------------------------------------------------------------------
+1 | x
+2 | y
+
+
+--------------------------------------------------------------------------------
+/dir/sub/c.rs:
+--------------------------------------------------------------------------------
+1 | fn main() {}
+
+
+";
+
+        assert_eq!(out, expected);
     }
 }
