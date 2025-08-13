@@ -1,7 +1,7 @@
 {
   "name": "loctok",
-  "version": "0.0.0",
-  "description": "Count LOC & LLM tokens fast (prebuilt binaries).",
+  "version": "0.1.0",
+  "description": "Count LOC (lines of code) & TOK (LLM tokens), fast",
   "license": "MIT OR Apache-2.0",
   "bin": {
     "loctok": "bin/loctok.js"
