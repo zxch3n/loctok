@@ -1,0 +1,119 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.2.3)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.setver.outputs.version }}
+    steps:
+      - name: Set version
+        id: setver
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            ver="${GITHUB_REF_NAME#v}"
+          else
+            ver="${{ github.event.inputs.version }}"
+          fi
+          if [[ -z "$ver" ]]; then
+            echo "Version not provided and not a tag push." >&2
+            exit 1
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.setver.outputs.version }}
+          name: loctok v${{ steps.setver.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+
+  build_and_upload:
+    needs: create_release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            exeSuffix: ''
+          - os: macos-13
+            target: x86_64-apple-darwin
+            exeSuffix: ''
+          - os: macos-14
+            target: aarch64-apple-darwin
+            exeSuffix: ''
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            exeSuffix: '.exe'
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.create_release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - name: Build release
+        run: cargo build --release --locked
+
+      - name: Prepare asset (unix)
+        if: runner.os != 'Windows'
+        run: |
+          ASSET="loctok-v${VERSION}-${{ matrix.target }}"
+          cp target/release/loctok "$ASSET"
+          echo "ASSET=$ASSET" >> $GITHUB_ENV
+      - name: Prepare asset (windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $env:ASSET = "loctok-v$env:VERSION-${{ matrix.target }}.exe"
+          Copy-Item target\release\loctok.exe $env:ASSET
+          echo "ASSET=$env:ASSET" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload asset to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET }}
+          tag_name: v${{ env.VERSION }}
+
+  publish_npm:
+    needs: [create_release, build_and_upload]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.create_release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Sync npm package version
+        working-directory: npm
+        run: |
+          node -e "const fs=require('fs'); const p=require('./package.json'); p.version='${VERSION}'; fs.writeFileSync('package.json', JSON.stringify(p, null, 2)+'\n');"
+      - name: Publish to npm
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish --access public

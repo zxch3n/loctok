@@ -1,0 +1,31 @@
+{
+  "name": "loctok",
+  "version": "0.0.0",
+  "description": "Count LOC & LLM tokens fast (prebuilt binaries).",
+  "license": "MIT OR Apache-2.0",
+  "bin": {
+    "loctok": "bin/loctok.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zxch3n/loctok.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zxch3n/loctok/issues"
+  },
+  "homepage": "https://github.com/zxch3n/loctok#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
