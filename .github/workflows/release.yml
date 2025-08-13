@@ -52,6 +52,9 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             exeSuffix: ''
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            exeSuffix: ''
           - os: macos-13
             target: x86_64-apple-darwin
             exeSuffix: ''
@@ -68,25 +71,36 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - name: Cache cargo
         uses: swatinem/rust-cache@v2
         with:
           workspaces: .
+      - name: Install cross linker (Linux aarch64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
       - name: Build release
-        run: cargo build --release --locked
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: |
+          cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Prepare asset (unix)
         if: runner.os != 'Windows'
         run: |
           ASSET="loctok-v${VERSION}-${{ matrix.target }}"
-          cp target/release/loctok "$ASSET"
+          cp "target/${{ matrix.target }}/release/loctok" "$ASSET"
           echo "ASSET=$ASSET" >> $GITHUB_ENV
       - name: Prepare asset (windows)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
           $env:ASSET = "loctok-v$env:VERSION-${{ matrix.target }}.exe"
-          Copy-Item target\release\loctok.exe $env:ASSET
+          Copy-Item "target\${{ matrix.target }}\release\loctok.exe" $env:ASSET
           echo "ASSET=$env:ASSET" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Upload asset to release

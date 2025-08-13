@@ -17,4 +17,4 @@ counts.json
 
 # Node/npm leftovers (if present)
 node_modules/
-
+vendor/

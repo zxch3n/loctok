@@ -5,7 +5,20 @@
 */
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
 const https = require('https');
+const { URL } = require('url');
+// Respect proxy settings from environment (HTTP(S)_PROXY, NO_PROXY) and npm configs
+let getProxyForUrl;
+let HttpsProxyAgent;
+let HttpProxyAgent;
+try {
+  ({ getProxyForUrl } = require('proxy-from-env'));
+  ({ HttpsProxyAgent } = require('https-proxy-agent'));
+  ({ HttpProxyAgent } = require('http-proxy-agent'));
+} catch (_) {
+  // Dependencies may not resolve if a user vendors this; fall back to no-proxy mode.
+}
 
 const REPO = 'zxch3n/loctok';
 
@@ -41,13 +54,53 @@ function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
 }
 
+function chooseAgent(u) {
+  try {
+    if (!getProxyForUrl || (!HttpsProxyAgent && !HttpProxyAgent)) return undefined;
+    const proxy = getProxyForUrl(u) ||
+      // fallback to npm-specific envs if set
+      (new URL(u).protocol === 'https:'
+        ? (process.env.npm_config_https_proxy || process.env.npm_config_proxy)
+        : (process.env.npm_config_http_proxy || process.env.npm_config_proxy));
+    if (!proxy) return undefined;
+    const isHttps = new URL(u).protocol === 'https:';
+    if (isHttps && HttpsProxyAgent) return new HttpsProxyAgent(proxy);
+    if (!isHttps && HttpProxyAgent) return new HttpProxyAgent(proxy);
+  } catch (_) {
+    return undefined;
+  }
+  return undefined;
+}
+
+function getLib(u) {
+  const proto = new URL(u).protocol;
+  return proto === 'http:' ? http : https;
+}
+
+function toAbsoluteLocation(currentUrl, location) {
+  try {
+    return new URL(location, currentUrl).toString();
+  } catch (_) {
+    return location; // best effort
+  }
+}
+
 function download(url, dest) {
   return new Promise((resolve, reject) => {
     const doReq = (u, redirectsLeft = 5) => {
-      const req = https.get(u, { headers: { 'User-Agent': 'loctok-installer' } }, (res) => {
+      const lib = getLib(u);
+      const opts = {
+        headers: { 'User-Agent': 'loctok-installer' },
+      };
+      const agent = chooseAgent(u);
+      if (agent) opts.agent = agent;
+
+      const req = lib.get(u, opts, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           if (redirectsLeft === 0) return reject(new Error('Too many redirects'));
-          return doReq(res.headers.location, redirectsLeft - 1);
+          const next = toAbsoluteLocation(u, res.headers.location);
+          res.resume(); // drain
+          return doReq(next, redirectsLeft - 1);
         }
         if (res.statusCode !== 200) {
           return reject(new Error(`HTTP ${res.statusCode} for ${u}`));

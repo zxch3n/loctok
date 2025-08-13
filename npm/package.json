@@ -9,6 +9,11 @@
   "scripts": {
     "postinstall": "node scripts/install.js"
   },
+  "dependencies": {
+    "http-proxy-agent": "^7.0.2",
+    "https-proxy-agent": "^7.0.2",
+    "proxy-from-env": "^1.1.0"
+  },
   "files": [
     "bin/",
     "scripts/",
